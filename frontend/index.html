@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Compact — PDF optimization workbench</title>
+
+  <!--
+    Fonts are loaded from Google Fonts with full system fallbacks declared in
+    styles.css, so the app still looks correct offline (it simply falls back to
+    the system UI/mono stack). The three faces map to three roles:
+      Space Grotesk  -> display / wordmark (technical, instrument-like)
+      Inter          -> body / UI
+      JetBrains Mono -> every numeric readout (the meter's "figures")
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <!-- ================================================================ header -->
+  <header class="app-header">
+    <div class="wordmark">
+      <span class="glyph">▣</span>
+      Compact
+      <span class="sub">PDF optimization workbench</span>
+    </div>
+    <div class="header-spacer"></div>
+    <!-- Reflects /api/health: shows whether the optional Ghostscript pass is available. -->
+    <div class="gs-pill" id="gsPill"><span class="dot"></span><span id="gsText">checking…</span></div>
+  </header>
+
+  <main class="shell">
+    <!-- ============================================================ dropzone -->
+    <!-- Empty state: the hero is the act of bringing a file in. -->
+    <section id="dropzone" class="dropzone">
+      <div class="drop-icon">↧</div>
+      <p class="big">Drop PDFs here to begin</p>
+      <p class="hint">or <span class="browse-link">browse your files</span> — optimize one or several at once</p>
+      <input id="fileInput" type="file" accept="application/pdf" multiple class="hidden" />
+    </section>
+
+    <!-- ============================================================ workbench -->
+    <!-- Shown once at least one file is loaded. -->
+    <section id="workbenchWrap" class="hidden">
+      <!-- one tab per uploaded file; the trailing "+" re-opens the file picker -->
+      <div id="fileTabs" class="file-tabs"></div>
+
+      <div class="workbench">
+        <!-- ---------------------------------------------------- control desk -->
+        <div class="control-desk">
+          <div class="card">
+            <div class="card-head">
+              <div class="eyebrow">Step 1 · Strategy</div>
+              <h3>How hard should we push?</h3>
+            </div>
+            <div class="card-body">
+              <!-- recommendation chip, filled from the analysis -->
+              <div id="reco" class="reco hidden">
+                <span class="star">◆</span>
+                <span class="txt" id="recoText"></span>
+              </div>
+
+              <!-- profile chooser; each row shows a live estimated % for this file -->
+              <div class="seg" id="profileSeg"></div>
+
+              <!-- target-size alternative -->
+              <div class="card-head" style="padding:18px 0 0;">
+                <div class="eyebrow">Or aim for a size</div>
+              </div>
+              <div class="field-row">
+                <input id="targetInput" class="target-input mono" type="number" min="0" step="0.1" placeholder="—" />
+                <div class="unit-toggle">
+                  <button id="unitKB" data-unit="KB">KB</button>
+                  <button id="unitMB" data-unit="MB" class="active">MB</button>
+                </div>
+                <button id="targetApply" class="btn-ghost" style="width:auto;padding:9px 14px;border-radius:9px;">Aim</button>
+              </div>
+              <div class="muted-note" id="targetNote">We'll find the gentlest settings that fit, then verify the real result.</div>
+            </div>
+          </div>
+
+          <!-- advanced options -->
+          <div class="card">
+            <div class="card-body">
+              <details class="advanced" id="advanced">
+                <summary>Advanced controls</summary>
+
+                <div class="slider-row">
+                  <div class="top"><label>Image resolution</label><span class="val mono" id="dpiVal">—</span></div>
+                  <input type="range" id="dpiRange" min="72" max="300" step="1" />
+                </div>
+                <div class="slider-row">
+                  <div class="top"><label>Image quality</label><span class="val mono" id="qualityVal">—</span></div>
+                  <input type="range" id="qualityRange" min="20" max="95" step="1" />
+                </div>
+
+                <div class="toggle-row">
+                  <div class="lab">Convert images to grayscale<div class="sub">Big win for black-ink scans</div></div>
+                  <label class="switch"><input type="checkbox" id="grayToggle" /><span class="track"></span></label>
+                </div>
+                <div class="toggle-row">
+                  <div class="lab">Remove metadata<div class="sub">Strip author, title, XMP</div></div>
+                  <label class="switch"><input type="checkbox" id="metaToggle" /><span class="track"></span></label>
+                </div>
+                <div class="toggle-row">
+                  <div class="lab">Subset fonts<div class="sub">Drop unused glyphs</div></div>
+                  <label class="switch"><input type="checkbox" id="fontToggle" checked /><span class="track"></span></label>
+                </div>
+                <div class="toggle-row">
+                  <div class="lab">Final distillation pass<div class="sub" id="gsSub">Ghostscript structural repack</div></div>
+                  <label class="switch"><input type="checkbox" id="gsToggle" /><span class="track"></span></label>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- primary action -->
+          <button id="optimizeBtn" class="btn btn-primary" style="margin-top:18px;">Optimize this PDF</button>
+        </div>
+
+        <!-- ------------------------------------------------- meter + compare -->
+        <div class="results">
+          <!-- SIGNATURE: the size meter -->
+          <div class="card meter-card">
+            <div class="meter-head">
+              <span class="eyebrow">Size meter</span>
+              <span class="meter-state mono" id="meterState">estimate</span>
+            </div>
+            <div class="delta">
+              <span class="pct idle mono" id="deltaPct"><span class="arrow">↓</span>0.0%</span>
+              <span class="sizes mono">
+                <span class="o" id="origSize">—</span>
+                &nbsp;→&nbsp;
+                <span class="n" id="newSize">—</span>
+              </span>
+            </div>
+
+            <div class="meter-bar">
+              <div class="orig-track"></div>
+              <div class="fill idle" id="meterFill" style="width:100%;">
+                <span class="tag" id="meterTag"></span>
+              </div>
+            </div>
+            <div class="meter-scale">
+              <span>0</span>
+              <span id="scaleMax">original</span>
+            </div>
+
+            <div id="targetBanner" class="target-banner ok hidden"></div>
+
+            <!-- savings breakdown: where the bytes are -->
+            <div class="breakdown">
+              <div class="title">Where the bytes are</div>
+              <div class="stack">
+                <div class="seg-img" id="segImg" style="width:60%"></div>
+                <div class="seg-font" id="segFont" style="width:10%"></div>
+                <div class="seg-other" id="segOther" style="width:30%"></div>
+              </div>
+              <div class="legend">
+                <div class="item"><span class="swatch" style="background:var(--cobalt)"></span>Images <span class="v" id="legImg">—</span></div>
+                <div class="item"><span class="swatch" style="background:#7b6ce0"></span>Fonts <span class="v" id="legFont">—</span></div>
+                <div class="item"><span class="swatch" style="background:var(--slate)"></span>Other <span class="v" id="legOther">—</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- before / after -->
+          <div class="card">
+            <div class="compare-head">
+              <div class="card-head" style="padding:0;">
+                <div class="eyebrow">Step 2 · Compare</div>
+                <h3>Original vs optimized</h3>
+              </div>
+            </div>
+            <div class="compare-grid">
+              <div class="pane">
+                <div class="pane-bar"><span class="tag-o">ORIGINAL</span><span class="mono" id="origPaneSize">—</span></div>
+                <div class="canvas-wrap" id="origCanvasWrap"><div class="empty">Select a file to preview</div></div>
+                <div class="pager" id="origPager"></div>
+              </div>
+              <div class="pane">
+                <div class="pane-bar"><span class="tag-n">OPTIMIZED</span><span class="mono" id="optPaneSize">—</span></div>
+                <div class="canvas-wrap" id="optCanvasWrap"><div class="empty">Optimize to see the result here</div></div>
+                <div class="pager" id="optPager"></div>
+              </div>
+            </div>
+            <div class="result-actions">
+              <button id="downloadBtn" class="btn btn-primary hidden" style="width:auto;padding:12px 22px;">↧ Download optimized PDF</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <!--
+    PDF.js renders both preview panes. Loaded from cdnjs; the worker is pointed
+    at the matching CDN build. If offline, previews degrade gracefully (the panes
+    show an explanatory empty state) while all optimization still works.
+  -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

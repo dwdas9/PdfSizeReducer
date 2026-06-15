@@ -1,0 +1,17 @@
+# PDF Optimizer — Python dependencies
+# Install with:  pip install -r requirements.txt
+#
+# Pinned to the major versions this app was built and tested against. The engine
+# uses only stable, widely-available APIs of each, so minor upgrades are safe.
+
+PyMuPDF>=1.24,<2          # core PDF parsing, image rewrite, structural save (imports as `fitz`)
+pikepdf>=8.0              # available for deeper structural work / future extensions
+Pillow>=10.0             # image decode/encode and resampling for the image pass
+fastapi>=0.110           # HTTP API framework
+uvicorn[standard]>=0.27  # ASGI server used by run.py
+python-multipart>=0.0.9  # required by FastAPI to parse multipart file uploads
+
+# Optional, NOT installed via pip:
+#   ghostscript  — system package enabling the optional final distillation pass.
+#                  Install with your OS package manager (e.g. `apt install ghostscript`).
+#                  The app runs fully without it; the feature simply greys out.
