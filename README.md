@@ -1,4 +1,4 @@
-# Compact — PDF Optimization Workbench
+# Compact - PDF Optimization Workbench
 
 Shrink large PDFs dramatically without an Adobe Acrobat subscription. Compact is
 a small, self-hosted web app focused on doing one thing exceptionally well:
